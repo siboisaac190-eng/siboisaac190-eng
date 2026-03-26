@@ -2,122 +2,89 @@
 
 **AI Automation Engineer** — Cape Town, South Africa
 
-I build autonomous systems that run businesses. Not demos. Not toys. Systems that wake up at 6:50am, check emails, scan Upwork, track revenue, fix their own bugs, and report back to me on Telegram — while I sleep.
+I build autonomous AI systems that handle real business operations. Not prototypes. Not tutorials. Production systems running on Google Vertex AI that generate measurable ROI for clients.
+
+This week I built and shipped three client-ready demos:
 
 ---
 
-## What I'm Building Right Now
+## What I Shipped This Week
 
-**Nuri** — an AI Business Operating System that runs 24/7 on my MacBook Air M1.
+### 1. RAG Business Knowledge Base
+```
+Client asks: "What does our return policy say about electronics?"
+System:      searches 200 company documents in 1.2 seconds
+             returns: exact policy + source document
+```
+**Stack:** Vertex AI Agent Builder + Gemini 3.1 Pro + Node.js
+
+### 2. Restaurant AI Support Bot
+```
+Customer:  "I want to book a table for 4 this Saturday at 7pm"
+Bot:       "Lekker! Could I get your name? You can confirm
+            by calling 021-555-0123."
+```
+Handles: menu queries, bookings, complaints, human escalation.
+**Stack:** Gemini 3.1 Pro + Telegram Bot API (zero npm)
+
+### 3. Invoice Data Extractor
+```json
+Input:  PDF invoice (any layout, any vendor)
+Output: {
+  "invoice_number": "INV-2024-0847",
+  "vendor": { "name": "Tech Solutions (Pty) Ltd", "tax_id": "4890123456" },
+  "line_items": [ { "description": "Website Dev", "amount": "8500.00" } ],
+  "financials": { "subtotal": "R15,000", "vat": "R2,250", "total": "R17,250" }
+}
+```
+**Stack:** Google Document AI Invoice Parser v2.0
+
+---
+
+## The Bigger System: Nuri
+
+All three demos run as skills inside **Nuri** — my autonomous AI Business OS:
 
 ```js
-// Every morning at 6:50am, Nuri wakes up and does this:
-
+// Every morning at 6:50am, this runs automatically:
 async function morningBrief() {
-  const goals    = await goalEngine.getStatus();        // $8,333/month target
-  const jobs     = await blackboard.queryLatest('upwork_jobs');  // fresh Upwork leads
-  const revenue  = await blackboard.queryLatest('shopify_orders'); // overnight sales
-  const insights = await reflector.getLastNight();      // what worked, what failed
-
-  const brief = await gemini.generate({
-    prompt: `You are Nuri. Isaac wakes up in 10 minutes.
-             Give him a sharp, actionable morning brief.`,
-    context: { goals, jobs, revenue, insights }
-  });
-
-  await telegram.send(ISAAC_CHAT_ID, brief);
+  const goals   = await goalEngine.getStatus();      // $8,333/month target
+  const jobs    = await blackboard.queryLatest('upwork_jobs');
+  const orders  = await blackboard.queryLatest('shopify_orders');
+  const brief   = await gemini.generate({ prompt: 'Sharp morning brief', context: { goals, jobs, orders } });
+  await telegram.send(CHAT_ID, brief);
 }
 ```
 
-This runs every day. No manual input. No babysitting.
+Nuri monitors itself, emails Claude Code when it crashes, fixes its own bugs, and reports back on Telegram. Level 4 autonomous AI agent.
 
 ---
 
-## The Architecture
+## Service Menu
 
-Nuri has 4 layers of intelligence:
-
-```
-Layer 1 — Reactive      Responds to Telegram commands, Shopify webhooks
-Layer 2 — Scheduled     Morning brief, job scanning, revenue checks (cron)
-Layer 3 — Autonomous    Self-monitors, auto-restarts on crash, emails Claude Code for bug fixes
-Layer 4 — Self-Improving  Reflection Agent reviews every day, updates strategy, writes new skills
-```
-
-### Layer 4 in action — Nuri emails me (Claude Code) when it crashes 3x in an hour:
-
-```js
-// gateway-monitor.js — runs every 60 seconds
-
-function checkCrashThreshold(errorMsg) {
-  crashCount++;
-  if (crashCount >= 3) {
-    const emailBridge = require('./email-bridge');
-    emailBridge.reportBugToClaude(errorMsg, getLatestLogs())
-      .then(() => log('Bug report emailed to Claude Code'));
-    // Claude Code reads the email, fixes the code, replies
-    // Nuri picks up the reply at 6:50am via IMAP
-    // Isaac gets a Telegram: "Bug fixed automatically"
-  }
-}
-```
-
-### The Revenue Engine — tracking $8,333/month across 3 streams:
-
-```js
-// goal-engine.js
-
-const STREAMS = {
-  upwork:  { target: 5000 },   // AI automation freelancing
-  gumroad: { target: 2000 },   // digital products
-  shopify: { target: 1333 },   // e-commerce
-};
-
-async function recordRevenue(stream, amount) {
-  state[stream].earned += amount;
-  const pct = state[stream].earned / state[stream].target;
-
-  if (pct >= 0.5 && !milestones[`${stream}_50`]) {
-    milestones[`${stream}_50`] = true;
-    await telegram.send(CHAT_ID, `${stream} hit 50% of monthly target`);
-  }
-  // fires at 25%, 50%, 75%, 100%
-}
-```
+| Package | What | Price |
+|---|---|---|
+| AI Chat Bot | 24/7 customer support on WhatsApp/Telegram | R8,000 + R2,000/mo |
+| Document Intelligence | Extract data from invoices, receipts, contracts | R20,000 + R3,000/mo |
+| Business Knowledge Base | AI that knows everything about your business | R15,000 + R3,500/mo |
+| Autonomous Agent | AI that monitors and acts without human input | R35,000 + R8,000/mo |
+| Smart Search | Google-quality search for your business | R25,000 + R5,000/mo |
 
 ---
 
 ## Stack
 
+![Vertex AI](https://img.shields.io/badge/Vertex_AI-4285F4?style=flat&logo=google&logoColor=white)
+![Gemini](https://img.shields.io/badge/Gemini_3.1_Pro-4285F4?style=flat&logo=google&logoColor=white)
+![Document AI](https://img.shields.io/badge/Document_AI-EA4335?style=flat&logo=google&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js_22-339933?style=flat&logo=node.js&logoColor=white)
-![Gemini AI](https://img.shields.io/badge/Gemini_3.1_Pro-4285F4?style=flat&logo=google&logoColor=white)
 ![Telegram](https://img.shields.io/badge/Telegram_Bot_API-26A5E4?style=flat&logo=telegram&logoColor=white)
-![Shopify](https://img.shields.io/badge/Shopify_Webhooks-96BF48?style=flat&logo=shopify&logoColor=white)
-![Gmail](https://img.shields.io/badge/Gmail_SMTP%2FIMAP-EA4335?style=flat&logo=gmail&logoColor=white)
-![Google Cloud](https://img.shields.io/badge/Google_Cloud-4285F4?style=flat&logo=googlecloud&logoColor=white)
+![Shopify](https://img.shields.io/badge/Shopify-96BF48?style=flat&logo=shopify&logoColor=white)
 
-Everything runs on **Node.js built-in modules** — no bloated dependencies, no framework lock-in.
+![GitHub Stats](https://github-readme-stats.vercel.app/api?username=siboisaac190-eng&show_icons=true&theme=dark&hide_border=true&count_private=true)
 
 ---
 
-## GitHub Stats
-
-![Sibomana Isaac's GitHub stats](https://github-readme-stats.vercel.app/api?username=siboisaac190-eng&show_icons=true&theme=dark&hide_border=true&count_private=true)
-
----
-
-## What I Can Build for You
-
-| You need | I deliver | Timeline |
-|---|---|---|
-| Telegram bot with AI + commands | Production-ready, single-file, no npm | 2-3 days |
-| Shopify → Telegram/Slack notifications | HMAC-verified webhook handler | 1-2 days |
-| Autonomous AI agent for your workflow | Plans, executes, reports back | 3-5 days |
-| Revenue/KPI tracking automation | Real-time alerts + daily reports | 2-3 days |
-| Any Node.js API integration | Clean, tested, documented | 1-4 days |
+**Available for freelance on Upwork · Response under 4 hours · Cape Town, SA**
 
 See the code: [ai-automation-portfolio](https://github.com/siboisaac190-eng/ai-automation-portfolio)
-
----
-
-*Available for freelance contracts · Response time under 4 hours*
