@@ -78,6 +78,7 @@ Goal tracked in real-time. Tell Nuri "applied to X" or "got paid $Y" — it reco
 ## Stack
 
 ![Node.js](https://img.shields.io/badge/Node.js_22-339933?style=flat&logo=node.js&logoColor=white)
+![Claude](https://img.shields.io/badge/Claude_Sonnet_4.6-D97706?style=flat&logo=anthropic&logoColor=white)
 ![Gemini](https://img.shields.io/badge/Gemini_3.1_Pro-4285F4?style=flat&logo=google&logoColor=white)
 ![Vertex AI](https://img.shields.io/badge/Vertex_AI-4285F4?style=flat&logo=google&logoColor=white)
 ![Telegram](https://img.shields.io/badge/Telegram_Bot_API-26A5E4?style=flat&logo=telegram&logoColor=white)
