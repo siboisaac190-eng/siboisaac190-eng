@@ -1,15 +1,17 @@
 /**
  * NASA EONET Disaster Monitor — Nuri Plugin
- * No API key required. Free & open.
+ * EONET: no API key required.
+ * Asteroids (NeoWs): set NASA_API_KEY in your .env
  * ~/.openclaw/plugins/disaster-monitor/index.js
  */
 
 'use strict';
 
-const EONET_BASE = 'https://eonet.gsfc.nasa.gov/api/v3/events';
+const EONET_BASE    = 'https://eonet.gsfc.nasa.gov/api/v3/events';
+const NEO_BASE      = 'https://api.nasa.gov/neo/rest/v1/feed';
 
 // Cape Town coordinates
-const CAPE_TOWN = { lat: -33.9249, lon: 18.4241 };
+const CAPE_TOWN      = { lat: -33.9249, lon: 18.4241 };
 const ALERT_RADIUS_KM = 1000;
 
 // Africa bounding box: lon -18 to 52, lat -36 to 38
@@ -17,7 +19,7 @@ const ALERT_RADIUS_KM = 1000;
 const AFRICA_BBOX = '-18,38,52,-36';
 
 // ─────────────────────────────────────────────
-// 1. FETCH CURRENT DISASTERS
+// 1. FETCH CURRENT DISASTERS (EONET — no key)
 // ─────────────────────────────────────────────
 
 /**
@@ -49,14 +51,72 @@ async function getAfricaDisasters(days = 7) {
 }
 
 // ─────────────────────────────────────────────
-// 3. DISTANCE HELPER (Haversine)
+// 3. ASTEROIDS — Near Earth Objects (NeoWs)
+//    Requires NASA_API_KEY env var
+// ─────────────────────────────────────────────
+
+/**
+ * Fetch Near Earth Objects for a date range (max 7 days per request).
+ * @param {string} startDate - YYYY-MM-DD
+ * @param {string} endDate   - YYYY-MM-DD (max 7 days after startDate)
+ * @returns {Object} NeoWs feed response
+ */
+async function getNearEarthObjects(startDate, endDate) {
+  const apiKey = process.env.NASA_API_KEY || 'DEMO_KEY';
+  const params = new URLSearchParams({ start_date: startDate, end_date: endDate, api_key: apiKey });
+  const res = await fetch(`${NEO_BASE}?${params}`);
+  if (!res.ok) throw new Error(`NeoWs fetch failed: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Get potentially hazardous asteroids for today + next 3 days.
+ * Returns a flat array of hazardous NEO objects with their closest approach data.
+ */
+async function getHazardousAsteroids() {
+  const today = new Date();
+  const end   = new Date(today);
+  end.setDate(end.getDate() + 3);
+
+  const fmt  = d => d.toISOString().slice(0, 10);
+  const data = await getNearEarthObjects(fmt(today), fmt(end));
+
+  const hazardous = [];
+  for (const [date, neos] of Object.entries(data.near_earth_objects || {})) {
+    for (const neo of neos) {
+      if (!neo.is_potentially_hazardous_asteroid) continue;
+      const approach = neo.close_approach_data?.[0];
+      hazardous.push({
+        id:           neo.id,
+        name:         neo.name,
+        date,
+        diameterKm: {
+          min: neo.estimated_diameter?.kilometers?.estimated_diameter_min?.toFixed(3),
+          max: neo.estimated_diameter?.kilometers?.estimated_diameter_max?.toFixed(3),
+        },
+        missDistanceKm: approach
+          ? Number(approach.miss_distance?.kilometers).toLocaleString()
+          : 'unknown',
+        velocityKmH: approach
+          ? Number(approach.relative_velocity?.kilometers_per_hour).toLocaleString()
+          : 'unknown',
+        closeApproachDate: approach?.close_approach_date_full || date,
+      });
+    }
+  }
+
+  return hazardous.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// ─────────────────────────────────────────────
+// 4. DISTANCE HELPER (Haversine)
 // ─────────────────────────────────────────────
 
 function haversineKm(lat1, lon1, lat2, lon2) {
-  const R = 6371;
+  const R    = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
+  const a    =
     Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) *
       Math.cos((lat2 * Math.PI) / 180) *
@@ -66,7 +126,6 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 
 /**
  * Return the closest geometry point distance (km) from Cape Town for an event.
- * Events may have Point or Polygon geometry; we check all coordinates.
  */
 function distanceFromCapeTown(event) {
   if (!event.geometry || event.geometry.length === 0) return Infinity;
@@ -76,12 +135,10 @@ function distanceFromCapeTown(event) {
     const coords = geom.coordinates;
     if (!coords) continue;
 
-    // Point: [lon, lat]
     if (geom.type === 'Point') {
       const d = haversineKm(CAPE_TOWN.lat, CAPE_TOWN.lon, coords[1], coords[0]);
       if (d < minDist) minDist = d;
     }
-    // Polygon: [[[lon, lat], ...]]
     if (geom.type === 'Polygon') {
       for (const ring of coords) {
         for (const [lon, lat] of ring) {
@@ -95,12 +152,9 @@ function distanceFromCapeTown(event) {
 }
 
 // ─────────────────────────────────────────────
-// 4. ALERT SYSTEM
+// 5. ALERT SYSTEM
 // ─────────────────────────────────────────────
 
-/**
- * Check all events; return those within ALERT_RADIUS_KM of Cape Town.
- */
 function getEventsNearCapeTown(events) {
   return events
     .map(e => ({ event: e, distKm: distanceFromCapeTown(e) }))
@@ -131,7 +185,7 @@ async function sendTelegramAlert(text) {
  * Run proximity check and fire Telegram alerts if needed.
  */
 async function runAlerts() {
-  const data = await getCurrentDisasters(['severeStorms', 'floods', 'wildfires', 'volcanoes', 'earthquakes']);
+  const data   = await getCurrentDisasters(['severeStorms', 'floods', 'wildfires', 'volcanoes', 'earthquakes']);
   const nearby = getEventsNearCapeTown(data.events || []);
   if (nearby.length === 0) return;
 
@@ -148,29 +202,25 @@ async function runAlerts() {
 }
 
 // ─────────────────────────────────────────────
-// 5. MORNING BRIEF INTEGRATION
+// 6. MORNING BRIEF INTEGRATION
 // ─────────────────────────────────────────────
 
 /**
- * Returns a formatted morning brief section about active disasters.
+ * Returns a formatted morning brief section.
  * Call this from Nuri's morning brief generator (7am cron).
  */
 async function getMorningBriefSection() {
-  const [africaData, storms, floods] = await Promise.all([
+  const [africaData, storms, floods, allData] = await Promise.all([
     getAfricaDisasters(7),
     getCurrentDisasters(['severeStorms'], 7),
     getCurrentDisasters(['floods'], 7),
+    getCurrentDisasters(['severeStorms', 'floods', 'wildfires', 'volcanoes', 'earthquakes'], 7),
   ]);
 
   const africaEvents = africaData.events || [];
   const stormTitles  = (storms.events || []).map(e => e.title);
   const floodTitles  = (floods.events || []).map(e => e.title);
-
-  // Near Cape Town check
-  const allData = await getCurrentDisasters(
-    ['severeStorms', 'floods', 'wildfires', 'volcanoes', 'earthquakes'], 7
-  );
-  const nearCT = getEventsNearCapeTown(allData.events || []);
+  const nearCT       = getEventsNearCapeTown(allData.events || []);
 
   let section = `🌍 *Active disasters near SA:* ${africaEvents.length}\n`;
 
@@ -193,12 +243,28 @@ async function getMorningBriefSection() {
     ).join('\n');
   }
 
-  section += `\n\n_Source: NASA EONET_`;
+  // Asteroids (only if NASA_API_KEY is configured)
+  if (process.env.NASA_API_KEY) {
+    try {
+      const hazardous = await getHazardousAsteroids();
+      if (hazardous.length) {
+        section += `\n\n☄️ *Hazardous Asteroids (next 3 days): ${hazardous.length}*\n`;
+        section += hazardous.slice(0, 3).map(a =>
+          `  • ${a.name} — miss dist: ${a.missDistanceKm} km (${a.closeApproachDate})`
+        ).join('\n');
+        if (hazardous.length > 3) section += `\n  _...and ${hazardous.length - 3} more_`;
+      }
+    } catch (e) {
+      console.warn('[disaster-monitor] Asteroid fetch failed:', e.message);
+    }
+  }
+
+  section += `\n\n_Source: NASA EONET & NeoWs_`;
   return section;
 }
 
 // ─────────────────────────────────────────────
-// 6. QUICK SUMMARY (for CLI / test run)
+// 7. QUICK SUMMARY (standalone test)
 // ─────────────────────────────────────────────
 
 async function printSummary() {
@@ -209,9 +275,9 @@ async function printSummary() {
     getAfricaDisasters(7),
   ]);
 
-  const events = all.events || [];
+  const events       = all.events || [];
   const africaEvents = africa.events || [];
-  const nearby = getEventsNearCapeTown(events);
+  const nearby       = getEventsNearCapeTown(events);
 
   console.log(`Total open events (global, last 7d): ${events.length}`);
   console.log(`Active events in Africa bbox:        ${africaEvents.length}`);
@@ -238,6 +304,30 @@ async function printSummary() {
     );
   }
 
+  // Asteroids
+  if (process.env.NASA_API_KEY) {
+    console.log('\n── Hazardous Asteroids (next 3 days) ────────');
+    try {
+      const hazardous = await getHazardousAsteroids();
+      if (!hazardous.length) {
+        console.log('  None detected.');
+      } else {
+        hazardous.forEach(a => {
+          console.log(`  ☄️  ${a.name}`);
+          console.log(`      Diameter: ${a.diameterKm.min}–${a.diameterKm.max} km`);
+          console.log(`      Miss dist: ${a.missDistanceKm} km`);
+          console.log(`      Speed:     ${a.velocityKmH} km/h`);
+          console.log(`      Approach:  ${a.closeApproachDate}`);
+        });
+      }
+    } catch (e) {
+      console.warn('  Asteroid fetch failed:', e.message);
+    }
+  } else {
+    console.log('\n── Asteroids ─────────────────────────────────');
+    console.log('  Set NASA_API_KEY env var to enable asteroid monitoring.');
+  }
+
   console.log('\n── Morning Brief Preview ────────────────────');
   const brief = await getMorningBriefSection();
   console.log(brief);
@@ -250,6 +340,8 @@ async function printSummary() {
 module.exports = {
   getCurrentDisasters,
   getAfricaDisasters,
+  getNearEarthObjects,
+  getHazardousAsteroids,
   getEventsNearCapeTown,
   getMorningBriefSection,
   runAlerts,
