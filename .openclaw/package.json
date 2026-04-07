@@ -1,0 +1,18 @@
+{
+  "name": "openclaw-gateway",
+  "version": "1.0.0",
+  "description": "Nuri's openclaw gateway — Telegram → Claude API → tools → Telegram",
+  "main": "gateway.js",
+  "scripts": {
+    "start":   "node gateway.js",
+    "dev":     "node --watch gateway.js",
+    "install-deps": "npm install @anthropic-ai/sdk node-telegram-bot-api playwright dotenv"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk":       "^0.52.0",
+    "node-telegram-bot-api":   "^0.66.0",
+    "dotenv":                  "^16.0.0",
+    "playwright":              "^1.40.0"
+  },
+  "engines": { "node": ">=18.0.0" }
+}
