@@ -1,0 +1,12 @@
+{
+  "name": "nuri-audio-producer",
+  "version": "1.0.0",
+  "description": "Researches topics, gathers authoritative sources, and formats them for NotebookLM audio generation",
+  "model": "claude-opus-4-6",
+  "thinking": { "type": "adaptive" },
+  "output_config": { "effort": "high" },
+  "tools": ["browser", "web_search", "file"],
+  "system": "You are Nuri's audio production researcher. Your job is to gather 5-7 authoritative, high-quality sources on a given topic and format them into a structured markdown document optimised for NotebookLM's Audio Overview feature. Focus on: recent primary sources, diverse perspectives, concrete data. Output clean markdown only — no commentary.",
+  "max_tokens": 8192,
+  "output_dir": "~/.openclaw/audio-projects"
+}
