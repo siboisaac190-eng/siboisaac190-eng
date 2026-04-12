@@ -214,6 +214,51 @@ You have tools. ALWAYS use them when needed — never say "I can't check" when y
 Respond concisely. Use plain text for Telegram (no markdown except *bold* and _italic_).
 Current date: ${new Date().toDateString()}.`;
 
+// Model fallback chain — tries each in order until one succeeds.
+// Haiku does not support thinking so it is configured separately.
+const MODEL_CHAIN = [
+  { model: 'claude-opus-4-6',          thinking: { type: 'adaptive' } },
+  { model: 'claude-sonnet-4-6',        thinking: { type: 'adaptive' } },
+  { model: 'claude-haiku-4-5-20251001', thinking: undefined            },
+];
+
+async function callClaude(messages) {
+  let lastErr;
+  for (const { model, thinking } of MODEL_CHAIN) {
+    try {
+      const params = { model, max_tokens: 2048, system: SYSTEM, tools: TOOL_DEFS, messages };
+      if (thinking) params.thinking = thinking;
+      const resp = await anthropic.messages.create(params);
+      if (model !== MODEL_CHAIN[0].model) log('warn', `fell back to ${model}`);
+      return resp;
+    } catch (e) {
+      lastErr = e;
+      // 404 = model not found, 400 = bad request (e.g. thinking not supported)
+      if (e.status === 404 || e.status === 400) {
+        log('warn', `model ${model} unavailable (${e.status}), trying next`);
+        continue;
+      }
+      throw e; // auth errors, rate limits etc. — don't retry
+    }
+  }
+  throw lastErr;
+}
+
+/** Convert any error to a safe, human-readable string (never raw JSON). */
+function safeErrorMessage(err) {
+  let msg = err.message || String(err);
+  // If err.message is itself a JSON string (e.g. from OpenRouter / SDK error bodies)
+  try {
+    const parsed = JSON.parse(msg);
+    if (parsed.error?.message) msg = parsed.error.message || 'API error';
+    else if (parsed.message)   msg = parsed.message;
+    else                       msg = 'API error (see logs)';
+  } catch {}
+  // Strip anything that still looks like raw JSON braces
+  if (/^\s*\{/.test(msg)) msg = 'API error (see logs)';
+  return msg;
+}
+
 async function runAgentLoop(userMessage, conversationHistory = []) {
   const messages = [
     ...conversationHistory,
@@ -221,14 +266,7 @@ async function runAgentLoop(userMessage, conversationHistory = []) {
   ];
 
   for (let i = 0; i < 15; i++) {
-    const response = await anthropic.messages.create({
-      model:        'claude-opus-4-6',
-      max_tokens:   2048,
-      thinking:     { type: 'adaptive' },
-      system:       SYSTEM,
-      tools:        TOOL_DEFS,
-      messages,
-    });
+    const response = await callClaude(messages);
 
     messages.push({ role: 'assistant', content: response.content });
 
@@ -319,7 +357,14 @@ bot.on('message', async msg => {
 
   if (text === '/status') {
     const turns = Math.floor((getHistory(chatId).length) / 2);
-    await reply(chatId, `Gateway: online\nModel: claude-opus-4-6\nConversation turns: ${turns}\nTools: ${TOOL_DEFS.map(t => t.name).join(', ')}`);
+    await reply(chatId, `Gateway: online\nModels: ${MODEL_CHAIN.map(m => m.model).join(' → ')}\nConversation turns: ${turns}\nTools: ${TOOL_DEFS.map(t => t.name).join(', ')}`);
+    return;
+  }
+
+  if (text === '/restart') {
+    await reply(chatId, 'Restarting...');
+    log('info', 'restart requested via Telegram');
+    setTimeout(() => process.exit(0), 500); // PM2 / systemd will respawn
     return;
   }
 
@@ -334,7 +379,8 @@ bot.on('message', async msg => {
     log('info', 'replied', { chars: answer.length });
   } catch (err) {
     log('error', 'agent loop failed', { error: err.message });
-    await reply(chatId, `Sorry, something went wrong: ${err.message}`);
+    const errMsg = safeErrorMessage(err);
+    await reply(chatId, `Sorry, I hit a snag: ${errMsg}. Try again in a moment.`);
   }
 });
 
